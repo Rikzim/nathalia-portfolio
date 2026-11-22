@@ -134,15 +134,53 @@ export default function App() {
     if (!grid) return
     const media = gsap.matchMedia()
     media.add('(prefers-reduced-motion: no-preference)', () => {
-      gsap.from(grid.querySelectorAll('.archive__item'), {
-        y: 24,
-        opacity: 0,
-        duration: 0.5,
-        stagger: 0.035,
-        ease: 'power2.out',
+      const items = gsap.utils.toArray('.archive__item', grid)
+      const imageFrames = items.map((item) => item.querySelector('.art-card__image'))
+      const entrance = gsap.timeline({
         scrollTrigger: { trigger: grid, start: 'top 82%', once: true },
         onComplete: () => ScrollTrigger.refresh(),
       })
+      entrance
+        .from(items, {
+          y: 42,
+          autoAlpha: 0,
+          rotateZ: (index) => index % 2 === 0 ? -1.2 : 1.2,
+          duration: 0.75,
+          stagger: 0.075,
+          ease: 'power3.out',
+        })
+        .from(imageFrames, {
+          clipPath: 'inset(0 0 100% 0)',
+          duration: 0.7,
+          stagger: 0.065,
+          ease: 'power3.out',
+        }, 0.08)
+
+      const removeListeners = []
+      if (window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
+        items.forEach((item, index) => {
+          const frame = item.querySelector('.art-card__image')
+          const open = item.querySelector('.art-card__open')
+          const enter = () => {
+            gsap.to(item, { y: -9, rotateZ: index % 2 === 0 ? 0.55 : -0.55, duration: 0.34, ease: 'power3.out', overwrite: 'auto' })
+            gsap.to(frame, { boxShadow: '0 30px 58px rgba(0, 0, 0, 0.2)', duration: 0.34, ease: 'power3.out', overwrite: 'auto' })
+            gsap.to(open, { autoAlpha: 1, y: 0, scale: 1, duration: 0.24, ease: 'power2.out', overwrite: 'auto' })
+          }
+          const leave = () => {
+            gsap.to(item, { y: 0, rotateZ: 0, duration: 0.45, ease: 'power3.out', overwrite: 'auto' })
+            gsap.to(frame, { boxShadow: '0 14px 34px rgba(0, 0, 0, 0.1)', duration: 0.4, ease: 'power3.out', overwrite: 'auto' })
+            gsap.to(open, { autoAlpha: 0, y: 6, scale: 0.92, duration: 0.2, ease: 'power2.out', overwrite: 'auto' })
+          }
+          item.addEventListener('pointerenter', enter)
+          item.addEventListener('pointerleave', leave)
+          removeListeners.push(() => {
+            item.removeEventListener('pointerenter', enter)
+            item.removeEventListener('pointerleave', leave)
+          })
+        })
+      }
+
+      return () => removeListeners.forEach((remove) => remove())
     })
     return () => media.revert()
   }, { scope: mainRef, dependencies: [activeCategory], revertOnUpdate: true })
@@ -153,7 +191,25 @@ export default function App() {
       const track = featuredTrackRef.current
       const section = featuredRef.current
       if (!track || !section) return undefined
-      const distance = () => Math.max(0, track.scrollWidth - window.innerWidth + 48)
+      const distance = () => Math.max(0, track.scrollWidth - section.clientWidth)
+      const cardsPerPage = () => window.matchMedia('(min-width: 1220px)').matches ? 4 : 3
+      const pageStep = () => {
+        const firstCard = track.querySelector('.art-card--featured')
+        if (!firstCard) return distance()
+        const gap = Number.parseFloat(window.getComputedStyle(track).columnGap) || 0
+        return (firstCard.getBoundingClientRect().width + gap) * cardsPerPage()
+      }
+      const snapPoints = () => {
+        const total = distance()
+        if (!total) return [0, 1]
+        const points = [0]
+        const endBuffer = section.clientWidth * 0.06
+        for (let position = pageStep(); position < total - endBuffer; position += pageStep()) {
+          points.push(position / total)
+        }
+        points.push(1)
+        return points
+      }
       if (distance() < 80) return undefined
       gsap.to(track, {
         x: () => -distance(),
@@ -164,6 +220,12 @@ export default function App() {
           end: () => `+=${distance()}`,
           pin: true,
           scrub: 0.8,
+          snap: {
+            snapTo: (progress) => gsap.utils.snap(snapPoints(), progress),
+            duration: 0.35,
+            delay: 0.04,
+            ease: 'power1.inOut',
+          },
           invalidateOnRefresh: true,
         },
       })
@@ -179,11 +241,16 @@ export default function App() {
       <div className="scroll-progress" aria-hidden="true"><span className="scroll-progress__bar" /></div>
 
       <header className="site-header">
-        <a className="site-header__brand" href="#inicio" aria-label="underdog51, início">underdog<span>51</span></a>
-        <nav className="site-nav" aria-label="Navegação principal">
-          <a href="#trabalhos">Trabalhos</a>
-          <a href="#sobre">Sobre</a>
-          <a href="#contato">Contato</a>
+        <nav className="site-nav site-nav--left" aria-label="Navegação principal, parte 1">
+          <a href="#trabalhos"><span className="site-nav__label">Trabalhos</span><span className="site-nav__label site-nav__label--hover" aria-hidden="true">Trabalhos</span></a>
+          <a href="#sobre"><span className="site-nav__label">Sobre</span><span className="site-nav__label site-nav__label--hover" aria-hidden="true">Sobre</span></a>
+        </nav>
+        <a className="site-header__brand" href="#inicio" aria-label="underdog51, início">
+          <img src="/underdog51-logo.png" alt="Logo da underdog51" />
+        </a>
+        <nav className="site-nav site-nav--right" aria-label="Navegação principal, parte 2">
+          <a href="#contato"><span className="site-nav__label">Contato</span><span className="site-nav__label site-nav__label--hover" aria-hidden="true">Contato</span></a>
+          <a href="#arquivo"><span className="site-nav__label">Loja</span><span className="site-nav__label site-nav__label--hover" aria-hidden="true">Loja</span></a>
         </nav>
       </header>
 
@@ -219,14 +286,16 @@ export default function App() {
           </div>
           <p>Uma seleção de ilustrações, rabiscos e impressões feitas à mão.<br />Clique em uma obra para ver de perto.</p>
         </div>
-        <div className="featured__track" ref={featuredTrackRef}>
-          {archive.filter((artwork) => artwork.featured).map((artwork) => (
-            <ArtworkCard key={artwork.id} artwork={artwork} onOpen={openArtwork} featured />
-          ))}
-          <a className="featured__end-card" href="#arquivo">
-            <span>O ARQUIVO<br />COMPLETO</span>
-            <i>↘</i>
-          </a>
+        <div className="featured__viewport">
+          <div className="featured__track" ref={featuredTrackRef}>
+            {archive.filter((artwork) => artwork.featured).map((artwork) => (
+              <ArtworkCard key={artwork.id} artwork={artwork} onOpen={openArtwork} featured />
+            ))}
+            <a className="featured__end-card" href="#arquivo">
+              <span>O ARQUIVO<br />COMPLETO</span>
+              <i>↘</i>
+            </a>
+          </div>
         </div>
         <div className="featured__scroll-hint" aria-hidden="true">DESLIZE<span>→</span></div>
       </section>
